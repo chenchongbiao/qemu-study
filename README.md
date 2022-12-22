@@ -110,6 +110,9 @@ int vcpufd = ioctl(vmfd, KVM_CREATE_VCPU, 0);
 
 Qemu可以看成一款虚拟机，他可以模拟很多CPU架构。比如Alpha, ARM, Cris, i386, M68K, PPC, Sparc, [Mips](https://so.csdn.net/so/search?q=Mips&spm=1001.2101.3001.7020)等；以及大部分的硬件设备，也就可以模拟出不同的目标系统。
 
+QEMU用途广泛，比如Xen、Android模拟器等都是基于QEMU的。
+在嵌入式领域，很多人使用QEMU来深研Linux，比如研究文件系统、优化等等。
+
 # Qemu主要原理与机制
 
 Qemu可以实现目标平台的仿真，但是arm平台的程序怎么能在我们电脑上运行呢？这是Qemu主要要做的事情，翻译，那如何进行翻译呢。大致上就是下面这样：
@@ -121,9 +124,275 @@ Qemu可以实现目标平台的仿真，但是arm平台的程序怎么能在我�
 
 ## Qemu的两种运行模式
 
-Qemu 有两种运行模式，一种是全系统模拟（system mode），一种是用户态模拟(user mode)。
+Qemu 有两种运行模式，一种是全系统模拟（system mde），一种是用户态模拟(user mode)。
  从名字就可以看出来system mode肯定是模拟全了，可以直接跑操作系统之类的。user mode肯定就弱一点，跑个进程之类的。
- 放个图吧，两种用户态模式：
+
+# 安装qemu
+
+如果需要构建KVM环境，首先需要硬件支持。
+
+首先处理器（CPU）要在硬件上支持VT技术，还要在BIOS中将其功能打开，KVM才能使用到。目前，多数流行的服务器和部分桌面处理器的BIOS都默认将VT打开了。
+
+在BIOS中，VT的选项通过“Advanced→Processor Configuration”来查看和设置，它的标识通常为“Intel®Virtualization Technology”或“Intel VT”等类似的文字说明。
+
+设置好了VT和VT-d的相关选项，保存BIOS的设置并退出，系统重启后生效。在Linux系统中，可以通过检查/proc/cpuinfo文件中的CPU特性标志（flags）来查看CPU目前是否支持硬件虚拟化。在x86和x86-64平台中，Intel系列CPU支持虚拟化的标志为“vmx”，AMD系列CPU的标志为“svm”。所以可以用以下命令行查看“vmx”或者“svm”标志：
+
+```bash
+grep -E "svm|vmx" /proc/cpuinfo
+```
+
+## 安装KVM
+
+KVM作为Linux kernel中的一个module而存在，是从Linux 2.6.20版本开始被完全正式加入内核的主干开发和正式发布代码中。所以，只需要下载2.6.20版本，Linux kernel代码即可编译和使用KVM。
+
+总的来说，下载最新KVM源代码，主要有以下3种方式：
+ 1）下载KVM项目开发中的代码仓库kvm.git。
+ 2）下载Linux内核的代码仓库linux.git。
+ 3）打包下载Linux内核的源代码（Tarball 格式）。
+
+首先查看系统是否加载了kvm模块
+
+```bash
+lsmod | grep kvm
+```
+
+## 安装qemu
+
+安装qemu有两种方式，一种为源码安装，一种直接 `apt/yum/dnf`安装。
+
+### 源码安装
+
+参考官方步骤：[https://www.qemu.org/download/](https://www.qemu.org/download/)
+
+1. 下载QEMU源码
+2. 解压
+3. configure
+
+```bash
+
+wget https://download.qemu.org/qemu-7.2.0.tar.xz
+tar -xvJf qemu-7.2.0.tar.xz
+cd qemu-7.2.0
+# 加入KVM
+./configure --prefix=/opt/qemu --enable-debug --target-list=x86_64-softmmu --enable-kvm
+# --prefix 选项设置qemu的安装位置，之后若要卸载删除qemu只要删除该文件夹即可
+# config完，可以在指定的qemu安装文件夹下面找到config-host.mak文件，
+# 该文件记录着qemu配置的选项，可以和自己设置的进行对比，确保配置和自己已知
+make
+sudo make install
+```
+
+### deepin上安装
+
+使用源码编译好像并未成功
+
+```
+sudo apt install qemu qemu-kvm virt-manager
+```
+
+QEMU运行的速度及其慢，为了解决这个问题，可以使用[KVM](https://so.csdn.net/so/search?q=KVM&spm=1001.2101.3001.7020)，它是内核层面对虚拟话的支持。
+ 需要安装qemu-kvm
+
+
+### 安装工具安装
+
+```bash
+sudo apt install qemu-kvm qemu-img virt-manager libvirt libvirt-python python-virtinst libvirt-client virt-install virt-viewer
+```
+
+- qemu-kvm：qemu模拟器
+- qemu-img：qemu磁盘image管理器
+- virt-install：用来创建虚拟机的命令行工具
+- libvirt：提供libvirtd daemon来管理虚拟机和控制hypervisor
+- libvirt-client：提供客户端API用来访问server和提供管理虚拟机命令行工具的virsh实体
+- virt-viewer：图形控制台
+
+其中最重要的是qemu-kvm、qemu-img，同时为了方便管理虚拟机，最好安装上libvirt ^[2](https://www.cnblogs.com/born2run/p/16361823.html#fn2)^ 。
+
+安装完qemu后，在/usr/bin/目录下会有qemu开头的若干可执行程序，
+类似qemu-x86_64这种命令是运行某种架构的程序的，qemu-system-x86_64是运行某种架构系统的（虚拟机），如果需要kvm支持，需要加上参数
+ -enable-kvm， 如果使用libvirt可以配置相应的xml来实现kvm支持。
+
+# QEMU使用
+
+## 创建虚拟机
+
+### 创建镜像
+
+```bash
+qemu-img create -f qcow2 XXX.qcow2 10G
+```
+
+### 创建虚拟机
+
+```bash
+qemu-system-x86_64 -enable-kvm -name "XXX" -m 1024 -smp 2 -boot d -drive file=XXX.qcow2,if=virtio,index=0,media=disk,format=qcow2 -drive file=YYY.iso,index=1,media=cdrom
+```
+
+创建之后通过vnc连接到安装界面，之后便可进行安装
+
+### 启动虚拟机
+
+```bash
+# 未开启kvm支持，使用标准输入作为 QEMU monitor 命令源
+./qemu-system-x86_64 -m 1024 -hda XXX.qcow2 -usb -usbdevice tablet -vnc :51 -monitor stdio
+# 开启kvm支持，使用标准输入作为 QEMU monitor 命令源
+./qemu-system-x86_64 --enable-kvm -m 1024 -hda XXX.qcow2 -usb -usbdevice tablet -vnc :51 -monitor stdio
+# gdb调试
+gdb --args ./qemu-system-x86_64 -m 1024 -hda XXX.qcow2 -usb -usbdevice tablet -vnc :51
+```
+
+## 命令选项
+
+### qemu的标准选项
+
+```bash
+# qemu的标准选项主要涉及指定主机类型、CPU模式、NUMA、软驱设备、光驱设备及硬件设备等。
+-name name		# 虚拟机名称
+-M machine		# 指定要模拟的主机类型，如standard PC，ISA-only PC或Intel-Mac等，可以使用“qemu-kvm -M ?”获取所支持的所有类型
+-m megs			# 设定虚拟机的RAM大小
+-cpu model		# 设定CPU模型，如coreduo、qemu64等，可以使用"qemu-kvm -cpu ?"获取所支持的所有模型
+-smp n			# 设定模拟的SMP架构中CPU的个数
+    [,cores=cores]		# 每个CPU的核心数
+    [,threads=threads]  # 线程数
+    [,sockets=sockets]  # CPU的socket数目
+    [,maxcpus=maxcpus]  # 用于指定热插入的CPU个数上限
+-numa   非一致内存访问
+-numa opts：指定模拟多节点的numa设备
+ 
+-fda file：
+-fdb file：使用指定文件(file)作为软盘镜像，file为/dev/fd0表示使用物理软驱
+-hda file：
+-hdb file：
+-hdc file：
+-hdd file：使用指定file作为硬盘镜像
+-cdrom file：使用指定file作为CD-ROM镜像，需要注意的是-cdrom和-hdc不能同时使用：将file指定为/dev/cdrom可以直接使用物理光驱
+ 
+-drive						# 定义一个硬盘设备：可用子选项有很多
+    file=/path/to/somefile	# 硬盘映像文件
+    if=interface			# 硬盘设备接口类型 ide、scsi、sd、virtio（半虚拟化）
+    index=index				# 设定同一种控制器类型中不同设备的索引号，即标识号
+    media=media				# 定义介质类型为硬盘还是光盘disk、cdrom
+    snapshot=snapshot		# 指定当前硬盘设备是否支持快照功能：on或off
+    cache=cache				# 定义如何使用物理机缓存来访问块数据，其可用值有none、writeback、unsafe和writethrough四个
+    format=format			# 指定映像文件的格式，具体格式可参见qemu-img命令
+ 
+-boot [order=drives][,once=drives][,menu=on|off]	# 定义启动设备的引导次序，每种设备使用一个字符表示：不同的架构所支持的设备及其表示字符不尽相同，在x86 PC架构上，a、b表示软驱，c表示第一个光驱设备，n-p表示网络适配器，默认为硬盘设备。例如：-boot order=dc,once=d
+```
+
+示例
+
+```bash
+ qemu-system-x86_64 --name censtos -smp 2 -m 2048 -cpu host  -drive file=/data/iso/CentOS-7-x86_64-Minimal-1804.iso,media=cdrom  -drive file=centos.qcow2,media=disk -boot order=dc,once=d
+```
+
+### qemu显示选项
+
+显示选项用于定义虚拟机启动后的显示接口相关类型及属性等。
+
+```bash
+SDL 
+ -sdl			# 启用SDL
+ 
+VNC
+ -vnc display [option，option]	# 默认情况下，qemu使用SDL显示VGA输出；使用-vnc选项，可以让qemu监听在vnc上，并将VGA输出重定向至vnc会话，使用此选项时，必须使用-k选项指定键盘布局类型;其中有许多子选项，具体请参考qemu的手册
+    display
+        1、host:N				# N为控制台号
+            192.168.1.1:1		# 5900为起始端口
+        2、unix:/path/to/socket_file					# 监听在套接字
+        3、none					# 不显示
+    option
+        password				# 连接时需要验证密码，设定密码通过monitor接口使用change
+        reverse					# “反向”连接至某处于监听状态的vncview上
+ 
+-vga type		# 指定要仿真的VGA接口类型，常见的类型有：
+	cirrus: Cirrus Logic GD5446显示卡
+	std：带有Bochs VBI扩展的标准VGA显示卡
+	vmware：VMware SVGA-II兼容的显示适配器
+	qxl：QXL半虚拟化显示卡：与VGA兼容，在Guest中安装qxl驱动后能以很好的方式工作，在使用spice协议时推荐使用此类型
+	none：禁用VGA卡
+ 
+-monitor stdio	# 在标准输入输出上显示monitor界面
+-nographic		# 默认情况下，qemu使用SDL来显示VGA输出，而此选项用于禁止图形接口，此时，qemu类似一个简单的命令行程序，其仿真串口设备将被重定向到控制台
+-curses			# 禁止图形接口，并使用curses/ncurses作为交互接口
+-alt-grab		# 使用Ctrl+Alt+Shift组合键释放鼠标
+-ctrl-grab		# 使用右Ctrl键释放鼠标
+-spice option[,option[,...]]	# 启用spice远程桌面协议：其中有许多子选项，具体请参照qemu-kvm手册。
+```
+
+### 网络属性相关选项
+
+网络属性相关选项用于定义网络设备接口类型及其相关的各属性等信息。这里只介绍nic、tap和user三种类型网络接口的属性，其他类型请参考qemu手册 ^[9](https://www.cnblogs.com/born2run/p/16361823.html#fn9)^ 。
+
+```bash
+nic     #定义网络接口
+-net nic [,vlan=n,macaddr=n,model=type,name=name,addr=addr,vectors=v]		# 创建一个新的网卡设备并连接至vlan n中：PC架构上默认的NIC为e1000，macaddr用于为其制定mac地址，name用于指定一个在监控时显示的网上设备名称；qemu可以模拟多个类型的网卡设备，如virtio、i82557b、i82559er、ne2k_isa、pcnet、rtl8139、e1000、smc91c111、lance及mcf_fec等；不过，不同平台架构上，其支持的类型可能只包含前述列表中的一部分，可以使用qemu-system-x86_64 -net nic,model=?来获取当前平台支持的类型。
+    vlan		# vlan号
+    macaddr		# mac地址(mac 默认不变)
+    model		# e1000 virtio
+    name		# 设备名
+    addr		# ip地址
+ 
+tap     #nic管理虚拟机中的接口，tap就是管理宿主机上的对应接口
+-net tap[,vlan=n][,name=name][,fd=h][,ifname=name][,script=file][,downscript=dfile]		# 通过物理机的TAP网络接口连接至vlan n中，使用script=file指定的脚本（默认为/etc/qemu-ifup）来配置当前网络接口，并使用downscript=file指定的脚本(默认为/etc/qemu-ifdown)来撤销接口配置；使用script=no和downscript=no可分别用来禁止执行脚本。
+ 
+user
+-net user[,option][,option][,...]：在用户模式配置网络栈，其不依赖于管理权限；有效选项有：
+	vlan=n			# 连接至vlan n，默认n=0
+	name=name		# 指定接口的显示名称，常用于监控模式中
+	net=addr[/mask]	# 设定GuestOS中可见的IP网络，掩码可选，默认为10.0.2.0/8
+	host=addr		# 指定GuestOS中看到的物理机的IP地址，默认为指定网络中的第二个，即x.x.x.2
+	dhcpstart=addr	# 指定DHCP服务地址池中16个地址的起始IP，默认为第16个至第31个，即x.x.x.16-x.x.x.31
+	dns=addr		# 指定GuestOS可见的dns服务器地址，默认为GuestOS网络中的第3个地址，即x.x.x.3
+	tftp=dir		# 激活内置的tftp服务器，并使用指定的dir作为tftp服务器的默认根目录
+	bootfile=file	# BOOTP文件名称，用于实现网络引导GuestOS,如：qemu -hda linux.img -boot n -net user,tftp=/tftpserver/pub,bootfile=/pexlinux.0
+ 
+```
+
+### kvm的网络模型
+
+```bash
+1、隔离模型
+    使用bridge连接各个虚拟机但不关联物理网卡
+2、nat模型
+    在路由模型上添加nat规则 iptables
+3、路由模型
+    在隔离模型的基础之上添加一个虚拟网卡，开启路由转发功能。
+    需要虚拟机指定虚拟网卡的ip为网关
+    需要在要通信的主机或路由添加回复报文的路由条目
+4、桥接模型
+    在隔离模型的bridge上添加物理网卡
+    将物理网卡变为bridge，将原来的IP放到一张虚拟网卡并添加到桥上
+dhcp        服务器
+namespace   名称空间
+```
+
+### 手动创建bridge
+
+```bash
+apt install bridge-utils    #安装工具包
+dpkg -ql bridge-utils    #查看utils释放的文件
+brctl -h                #查看帮助
+brctl addbr br0         #添加网桥
+ifconfig -a             #查看全部接口
+brctl stp br0 off       #关闭生成树
+ip link set br0 up      #启动br0设备
+ip addr del 192.168.1.50/24 dev ens33   #拆除物理网卡ip
+ip addr add 192.168.1.50/24 dev br0     #添加ip
+ip a                    #ip是否添加成功
+ping 192.168.1.50       #检查ip可用
+ip link set dev ens33 master br0        #物理网卡加入桥接设备
+brctl show      #查看是否加入桥
+```
+
+### i386平台专用选项
+
+```bash
+-no-acpi		# 禁用ACPI功能，GuestOS与ACPI出现兼容问题时使用此选项
+-ballcon none	# 禁用balloon设备
+-balloon virtio[,addr=addr]	# 启用virtio balloon设备
+```
+
 
 
 # 参考
@@ -131,3 +400,5 @@ Qemu 有两种运行模式，一种是全系统模拟（system mode），一种�
 [Qemu学习-CPU虚拟化](https://zhuanlan.zhihu.com/p/521162423)
 
 [Qemu学习笔记](https://blog.csdn.net/qq_44117740/article/details/119411029)
+
+[QEMU 安装与使用](https://www.cnblogs.com/born2run/p/16361823.html)
