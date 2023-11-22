@@ -156,11 +156,9 @@ KVM作为Linux kernel中的一个module而存在，是从Linux 2.6.20版本开�
 lsmod | grep kvm
 ```
 
-## 安装qemu
-
 安装qemu有两种方式，一种为源码安装，一种直接 `apt/yum/dnf`安装。
 
-### 源码安装
+## 源码安装
 
 参考官方步骤：[https://www.qemu.org/download/](https://www.qemu.org/download/)
 
@@ -187,27 +185,25 @@ sudo make install
 使用源码编译好像并未成功
 
 ```
-sudo apt install qemu qemu-kvm virt-manager
+sudo apt install qemu-system qemu-kvm
 ```
 
 QEMU运行的速度及其慢，为了解决这个问题，可以使用[KVM](https://so.csdn.net/so/search?q=KVM&spm=1001.2101.3001.7020)，它是内核层面对虚拟话的支持。
  需要安装qemu-kvm
 
-
 ### 安装工具安装
 
 ```bash
-sudo apt install qemu-kvm qemu-img virt-manager libvirt libvirt-python python-virtinst libvirt-client virt-install virt-viewer
+sudo apt install virt-manager virt-viewer libvirt-dev libvirt-clients libvirt-daemon libvirt-daemon-system
 ```
 
 - qemu-kvm：qemu模拟器
 - qemu-img：qemu磁盘image管理器
-- virt-install：用来创建虚拟机的命令行工具
 - libvirt：提供libvirtd daemon来管理虚拟机和控制hypervisor
 - libvirt-client：提供客户端API用来访问server和提供管理虚拟机命令行工具的virsh实体
 - virt-viewer：图形控制台
 
-其中最重要的是qemu-kvm、qemu-img，同时为了方便管理虚拟机，最好安装上libvirt ^[2](https://www.cnblogs.com/born2run/p/16361823.html#fn2)^ 。
+其中最重要的是qemu-kvm、qemu-img，同时为了方便管理虚拟机，最好安装上libvirt  。
 
 安装完qemu后，在/usr/bin/目录下会有qemu开头的若干可执行程序，
 类似qemu-x86_64这种命令是运行某种架构的程序的，qemu-system-x86_64是运行某种架构系统的（虚拟机），如果需要kvm支持，需要加上参数
@@ -392,8 +388,6 @@ brctl show      #查看是否加入桥
 -ballcon none	# 禁用balloon设备
 -balloon virtio[,addr=addr]	# 启用virtio balloon设备
 ```
-
-
 
 # 参考
 
